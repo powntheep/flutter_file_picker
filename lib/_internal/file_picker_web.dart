@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:html';
+import 'dart:js_interop';
 import 'dart:typed_data';
+import 'package:web/helpers.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
@@ -25,10 +26,11 @@ class FilePickerWeb extends FilePicker {
   Element _ensureInitialized(String id) {
     Element? target = querySelector('#$id');
     if (target == null) {
-      final Element targetElement = Element.tag('flt-file-picker-inputs')
+      createElementTag('flt-file-picker-inputs');
+      final Element targetElement = createElementTag('flt-file-picker-inputs')
         ..id = id;
 
-      querySelector('body')!.children.add(targetElement);
+      querySelector('body')!.appendChild(targetElement);
       target = targetElement;
     }
     return target;
@@ -57,7 +59,8 @@ class FilePickerWeb extends FilePicker {
         Completer<List<PlatformFile>?>();
 
     String accept = _fileType(type, allowedExtensions);
-    InputElement uploadInput = FileUploadInputElement() as InputElement;
+
+    HTMLInputElement uploadInput = HTMLInputElement();
     uploadInput.draggable = true;
     uploadInput.multiple = allowMultiple;
     uploadInput.accept = accept;
@@ -75,7 +78,7 @@ class FilePickerWeb extends FilePicker {
       }
       changeEventTriggered = true;
 
-      final List<File> files = uploadInput.files!;
+      final FileList files = uploadInput.files!;
       final List<PlatformFile> pickedFiles = [];
 
       void addPickedFile(
@@ -100,7 +103,8 @@ class FilePickerWeb extends FilePicker {
         }
       }
 
-      for (File file in files) {
+      for (var i = 0; i < files.length; i++) {
+        final file = files.item(i)!;
         if (withReadStream) {
           addPickedFile(file, null, null, _openFileReadStream(file));
           continue;
@@ -111,7 +115,7 @@ class FilePickerWeb extends FilePicker {
           reader.onLoadEnd.listen((e) {
             addPickedFile(file, null, reader.result as String?, null);
           });
-          reader.readAsDataUrl(file);
+          reader.readAsDataURL(file);
           continue;
         }
 
@@ -129,7 +133,7 @@ class FilePickerWeb extends FilePicker {
     }
 
     void cancelledEventListener(_) {
-      window.removeEventListener('focus', cancelledEventListener);
+      window.removeEventListener('focus', cancelledEventListener.toJS);
 
       // This listener is called before the input changed event,
       // and the `uploadInput.files` value is still null
@@ -143,15 +147,15 @@ class FilePickerWeb extends FilePicker {
     }
 
     uploadInput.onChange.listen(changeEventListener);
-    uploadInput.addEventListener('change', changeEventListener);
-    uploadInput.addEventListener('cancel', cancelledEventListener);
+    uploadInput.addEventListener('change', changeEventListener.toJS);
+    uploadInput.addEventListener('cancel', cancelledEventListener.toJS);
 
     // Listen focus event for cancelled
-    window.addEventListener('focus', cancelledEventListener);
+    window.addEventListener('focus', cancelledEventListener.toJS);
 
     //Add input element to the page body
-    _target.children.clear();
-    _target.children.add(uploadInput);
+    _target.replaceChildren([].toJSBox);
+    _target.appendChild(uploadInput);
     uploadInput.click();
 
     final List<PlatformFile>? files = await filesCompleter.future;
@@ -192,7 +196,7 @@ class FilePickerWeb extends FilePicker {
           : start + _readStreamChunkSize;
       final blob = file.slice(start, end);
       reader.readAsArrayBuffer(blob);
-      await reader.onLoad.first;
+      await reader.onLoadEnd.first;
       yield reader.result as List<int>;
       start += _readStreamChunkSize;
     }
