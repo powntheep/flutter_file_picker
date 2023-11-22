@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
 import 'package:web/helpers.dart';
@@ -60,10 +61,14 @@ class FilePickerWeb extends FilePicker {
 
     String accept = _fileType(type, allowedExtensions);
 
-    HTMLInputElement uploadInput = HTMLInputElement();
+    print('accept: $accept');
+
+    HTMLInputElement uploadInput =
+        createElementTag('input') as HTMLInputElement;
     uploadInput.draggable = true;
     uploadInput.multiple = allowMultiple;
     uploadInput.accept = accept;
+    uploadInput.type = 'file';
     uploadInput.style.display = 'none';
 
     bool changeEventTriggered = false;
@@ -72,7 +77,7 @@ class FilePickerWeb extends FilePicker {
       onFileLoading(FilePickerStatus.picking);
     }
 
-    void changeEventListener(e) async {
+    void changeEventListener(JSAny e) async {
       if (changeEventTriggered) {
         return;
       }
@@ -122,17 +127,24 @@ class FilePickerWeb extends FilePicker {
         final syncCompleter = Completer<void>();
         final FileReader reader = FileReader();
         reader.onLoadEnd.listen((e) {
-          addPickedFile(file, reader.result as Uint8List?, null, null);
-          syncCompleter.complete();
+          try {
+            final bytes = base64Decode(reader.result.toString().split(',').last);
+            addPickedFile(file, bytes, null, null);
+            syncCompleter.complete();
+          } catch (e, stackTrace) {
+            print(e);
+            print(stackTrace);
+            syncCompleter.completeError(e);
+          }
         });
-        reader.readAsArrayBuffer(file);
+        reader.readAsDataURL(file);
         if (readSequential) {
           await syncCompleter.future;
         }
       }
     }
 
-    void cancelledEventListener(_) {
+    void cancelledEventListener(JSObject _) {
       window.removeEventListener('focus', cancelledEventListener.toJS);
 
       // This listener is called before the input changed event,
@@ -146,7 +158,9 @@ class FilePickerWeb extends FilePicker {
       });
     }
 
-    uploadInput.onChange.listen(changeEventListener);
+    // uploadInput.onChange.listen((event) {
+    //   changeEventListener(event as JSAny);
+    // });
     uploadInput.addEventListener('change', changeEventListener.toJS);
     uploadInput.addEventListener('cancel', cancelledEventListener.toJS);
 
@@ -154,7 +168,7 @@ class FilePickerWeb extends FilePicker {
     window.addEventListener('focus', cancelledEventListener.toJS);
 
     //Add input element to the page body
-    _target.replaceChildren([].toJSBox);
+    _target.replaceChildren(JSArray());
     _target.appendChild(uploadInput);
     uploadInput.click();
 
